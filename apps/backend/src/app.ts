@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
+import type { Server } from 'http';
 import { createLogger } from './utils/logger.js';
 import { env } from './config/env.js';
 
@@ -12,9 +13,13 @@ const logger = createLogger('App');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export async function buildApp() {
+export async function buildApp(httpServer: Server) {
   const app = Fastify({
-    logger: false, // We use our own pino logger
+    logger: false,
+    serverFactory: (handler) => {
+      httpServer.on('request', handler);
+      return httpServer;
+    },
   });
 
   // Register CORS

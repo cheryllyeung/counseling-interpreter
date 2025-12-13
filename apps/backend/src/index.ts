@@ -1,3 +1,4 @@
+import { createServer } from 'http';
 import { buildApp } from './app.js';
 import { setupSocketIO } from './socket/index.js';
 import { env } from './config/env.js';
@@ -5,30 +6,34 @@ import { logger } from './utils/logger.js';
 
 async function main() {
   try {
-    // Build Fastify app
-    const app = await buildApp();
+    const port = parseInt(env.PORT, 10);
 
-    // Get Fastify's underlying HTTP server
-    await app.ready();
-    const httpServer = app.server;
+    // Create HTTP server first
+    const httpServer = createServer();
+
+    // Build Fastify app with the shared HTTP server
+    const app = await buildApp(httpServer);
 
     // Setup Socket.IO on the same HTTP server
     const io = setupSocketIO(httpServer);
 
-    // Start server using Fastify's listen (which uses the same httpServer)
-    const port = parseInt(env.PORT, 10);
+    // Initialize Fastify
+    await app.ready();
 
-    await app.listen({ port, host: '0.0.0.0' });
-    logger.info(`Server running on http://0.0.0.0:${port}`);
-    logger.info(`Socket.IO ready for connections`);
-    logger.info(`Environment: ${env.NODE_ENV}`);
+    // Start listening
+    httpServer.listen(port, '0.0.0.0', () => {
+      logger.info(`Server running on http://0.0.0.0:${port}`);
+      logger.info(`Socket.IO ready for connections`);
+      logger.info(`Environment: ${env.NODE_ENV}`);
+    });
 
     // Graceful shutdown
     const shutdown = async () => {
       logger.info('Shutting down...');
 
       io.close();
-      await app.close(); // This also closes the underlying HTTP server
+      httpServer.close();
+      await app.close();
 
       logger.info('Server shut down gracefully');
       process.exit(0);

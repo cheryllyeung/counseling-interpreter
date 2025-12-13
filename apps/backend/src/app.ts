@@ -1,9 +1,16 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import { createLogger } from './utils/logger.js';
 import { env } from './config/env.js';
 
 const logger = createLogger('App');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export async function buildApp() {
   const app = Fastify({
@@ -12,7 +19,7 @@ export async function buildApp() {
 
   // Register CORS
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: process.env.CORS_ORIGIN || '*',
     credentials: true,
   });
 
@@ -33,6 +40,25 @@ export async function buildApp() {
       description: 'Real-time bilingual interpretation system for psychological counseling',
     };
   });
+
+  // Serve static frontend files in production
+  const frontendDistPath = join(__dirname, '../../frontend/dist');
+  if (env.NODE_ENV === 'production' && existsSync(frontendDistPath)) {
+    await app.register(fastifyStatic, {
+      root: frontendDistPath,
+      prefix: '/',
+    });
+
+    // SPA fallback - serve index.html for all non-API routes
+    app.setNotFoundHandler(async (request, reply) => {
+      if (!request.url.startsWith('/api') && !request.url.startsWith('/health')) {
+        return reply.sendFile('index.html');
+      }
+      return reply.status(404).send({ error: 'Not found' });
+    });
+
+    logger.info('Serving static frontend files from: ' + frontendDistPath);
+  }
 
   logger.info('Fastify app built');
 

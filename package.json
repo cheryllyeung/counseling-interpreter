@@ -7,7 +7,8 @@
     "dev": "pnpm run --parallel dev",
     "dev:backend": "pnpm --filter @counseling-interpreter/backend dev",
     "dev:frontend": "pnpm --filter @counseling-interpreter/frontend dev",
-    "build": "pnpm run -r build",
+    "build": "pnpm --filter @counseling-interpreter/shared build && pnpm --filter @counseling-interpreter/frontend build && pnpm --filter @counseling-interpreter/backend build",
+    "start": "node apps/backend/dist/index.js",
     "lint": "pnpm run -r lint",
     "typecheck": "pnpm run -r typecheck",
     "clean": "pnpm run -r clean && rm -rf node_modules"

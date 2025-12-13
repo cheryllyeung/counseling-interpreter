@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { config } from 'dotenv';
 
-// Load environment variables from root .env file
+// Load environment variables from .env file (for local development)
+// In production (Railway), env vars are set directly
 config({ path: '../../.env' });
+config(); // Also try loading from current directory
 
 const envSchema = z.object({
   // Server

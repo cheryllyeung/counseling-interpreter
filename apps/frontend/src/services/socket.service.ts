@@ -6,7 +6,10 @@ import type {
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
+// In production, connect to the same origin; in dev, use localhost:3001
+const WS_URL = import.meta.env.VITE_WS_URL || (
+  import.meta.env.PROD ? window.location.origin : 'http://localhost:3001'
+);
 
 class SocketService {
   private socket: TypedSocket | null = null;

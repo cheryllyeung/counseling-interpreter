@@ -46,6 +46,7 @@ interface SessionState {
   setCurrentTranscript: (text: string) => void;
   addTranscript: (data: TranscriptData) => void;
   updateTranslation: (id: string, translation: string) => void;
+  updateTranslationChunk: (id: string, chunk: string) => void;
   setLatencyMetrics: (metrics: LatencyMetrics) => void;
   reset: () => void;
 }
@@ -122,6 +123,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const { transcriptHistory } = get();
     const updated = transcriptHistory.map((t) =>
       t.id === id ? { ...t, translatedText: translation } : t
+    );
+    set({ transcriptHistory: updated });
+  },
+
+  updateTranslationChunk: (id, chunk) => {
+    const { transcriptHistory } = get();
+    const updated = transcriptHistory.map((t) =>
+      t.id === id ? { ...t, translatedText: (t.translatedText || '') + chunk } : t
     );
     set({ transcriptHistory: updated });
   },

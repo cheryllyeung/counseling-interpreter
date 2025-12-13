@@ -18,16 +18,37 @@ export interface TranscriptResult {
   }>;
 }
 
-export class DeepgramService extends EventEmitter {
+// Wrapper class that holds the connection and emits events
+export class DeepgramConnection extends EventEmitter {
+  private connection: ReturnType<ReturnType<typeof createClient>['listen']['live']>;
+
+  constructor(connection: ReturnType<ReturnType<typeof createClient>['listen']['live']>) {
+    super();
+    this.connection = connection;
+  }
+
+  getReadyState() {
+    return this.connection.getReadyState();
+  }
+
+  send(data: ArrayBuffer) {
+    this.connection.send(data);
+  }
+
+  requestClose() {
+    this.connection.requestClose();
+  }
+}
+
+export class DeepgramService {
   private client;
 
   constructor() {
-    super();
     this.client = createClient(env.DEEPGRAM_API_KEY);
     logger.info('Deepgram service initialized');
   }
 
-  createLiveConnection(language: Language) {
+  createLiveConnection(language: Language): DeepgramConnection {
     const langCode = language === 'zh' ? 'zh-TW' : 'en-US';
 
     logger.info({ language: langCode }, 'Creating live transcription connection');
@@ -46,9 +67,12 @@ export class DeepgramService extends EventEmitter {
       channels: 1,
     });
 
+    // Create a wrapper that emits events
+    const wrapper = new DeepgramConnection(connection);
+
     connection.on(LiveTranscriptionEvents.Open, () => {
       logger.info('Deepgram connection opened');
-      this.emit('ready');
+      wrapper.emit('ready');
     });
 
     connection.on(LiveTranscriptionEvents.Transcript, (data) => {
@@ -70,29 +94,29 @@ export class DeepgramService extends EventEmitter {
       // Only emit if there's actual text
       if (result.text.trim()) {
         logger.debug({ text: result.text, isFinal: result.isFinal }, 'Transcript received');
-        this.emit('transcript', result);
+        wrapper.emit('transcript', result);
       }
     });
 
     connection.on(LiveTranscriptionEvents.UtteranceEnd, () => {
       logger.debug('Utterance end detected');
-      this.emit('utteranceEnd');
+      wrapper.emit('utteranceEnd');
     });
 
     connection.on(LiveTranscriptionEvents.Error, (error) => {
       logger.error({ error }, 'Deepgram error');
-      this.emit('error', error);
+      wrapper.emit('error', error);
     });
 
     connection.on(LiveTranscriptionEvents.Close, () => {
       logger.info('Deepgram connection closed');
-      this.emit('close');
+      wrapper.emit('close');
     });
 
-    return connection;
+    return wrapper;
   }
 
-  sendAudio(connection: ReturnType<typeof this.createLiveConnection>, audioBuffer: Buffer) {
+  sendAudio(connection: DeepgramConnection, audioBuffer: Buffer) {
     if (connection.getReadyState() === 1) {
       // WebSocket.OPEN - convert Buffer to ArrayBuffer for type compatibility
       const arrayBuffer = audioBuffer.buffer.slice(
@@ -103,7 +127,7 @@ export class DeepgramService extends EventEmitter {
     }
   }
 
-  closeConnection(connection: ReturnType<typeof this.createLiveConnection>) {
+  closeConnection(connection: DeepgramConnection) {
     try {
       connection.requestClose();
       logger.info('Deepgram connection close requested');

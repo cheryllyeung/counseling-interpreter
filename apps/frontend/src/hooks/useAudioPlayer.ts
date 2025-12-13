@@ -27,8 +27,10 @@ export function useAudioPlayer() {
     const chunk = audioQueueRef.current.shift()!;
 
     try {
+      console.log('[AudioPlayer] Decoding audio chunk...');
       // Decode audio data
       const audioBuffer = await audioContext.decodeAudioData(chunk.slice(0));
+      console.log('[AudioPlayer] Decoded successfully, duration:', audioBuffer.duration, 'seconds');
 
       // Create buffer source
       const source = audioContext.createBufferSource();
@@ -37,12 +39,14 @@ export function useAudioPlayer() {
 
       // Play next chunk when this one ends
       source.onended = () => {
+        console.log('[AudioPlayer] Chunk finished playing');
         playNext();
       };
 
+      console.log('[AudioPlayer] Playing audio...');
       source.start();
     } catch (error) {
-      console.error('Error playing audio:', error);
+      console.error('[AudioPlayer] Error playing audio:', error);
       // Try next chunk
       playNext();
     }
@@ -50,10 +54,12 @@ export function useAudioPlayer() {
 
   const enqueueAudio = useCallback(
     (chunk: ArrayBuffer) => {
+      console.log('[AudioPlayer] Enqueuing chunk:', chunk.byteLength, 'bytes, queue size:', audioQueueRef.current.length + 1);
       audioQueueRef.current.push(chunk);
 
       // Start playing if not already processing
       if (!isProcessingRef.current) {
+        console.log('[AudioPlayer] Starting playback');
         playNext();
       }
     },

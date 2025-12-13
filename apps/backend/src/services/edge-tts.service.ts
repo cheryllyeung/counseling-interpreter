@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { createLogger } from '../utils/logger.js';
 import { randomUUID } from 'crypto';
-import { writeFile, unlink, readFile } from 'fs/promises';
+import { unlink, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 

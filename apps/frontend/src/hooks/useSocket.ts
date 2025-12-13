@@ -10,6 +10,7 @@ export function useSocket() {
     setSession,
     addTranscript,
     updateTranslation,
+    updateTranslationChunk,
     setProcessing,
     setLatencyMetrics,
   } = useSessionStore();
@@ -51,7 +52,11 @@ export function useSocket() {
           addTranscript(data);
         });
 
-        // Translation events
+        // Translation events - handle streaming chunks for real-time display
+        socket.on('translation:chunk', (data) => {
+          updateTranslationChunk(data.id, data.chunk);
+        });
+
         socket.on('translation:complete', (data) => {
           updateTranslation(data.id, data.translatedText);
         });
@@ -80,7 +85,7 @@ export function useSocket() {
     return () => {
       // Don't disconnect on unmount to maintain connection
     };
-  }, [setConnected, addTranscript, updateTranslation, setProcessing, setLatencyMetrics]);
+  }, [setConnected, addTranscript, updateTranslation, updateTranslationChunk, setProcessing, setLatencyMetrics]);
 
   const joinSession = useCallback((sessionId: string, role: Role) => {
     const socket = socketRef.current;

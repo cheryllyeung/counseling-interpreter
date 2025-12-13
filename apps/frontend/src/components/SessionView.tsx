@@ -14,7 +14,7 @@ interface SessionViewProps {
 }
 
 export function SessionView({ sessionId }: SessionViewProps) {
-  const { startAudio, sendAudioChunk, stopAudio, joinSession } = useSocket();
+  const { startAudio, sendAudioChunk, stopAudio } = useSocket();
   const { role, isConnected, setRecording } = useSessionStore();
   const { enqueueAudio, resumeContext } = useAudioPlayer();
 
@@ -29,23 +29,30 @@ export function SessionView({ sessionId }: SessionViewProps) {
     if (!socket) return;
 
     const handleTTSChunk = (data: { id: string; chunk: ArrayBuffer }) => {
-      // Only play if it's meant for us (we're the target)
+      console.log('[TTS] Received audio chunk:', data.chunk.byteLength, 'bytes');
       enqueueAudio(data.chunk);
     };
 
+    const handleTTSStart = (data: { id: string }) => {
+      console.log('[TTS] Starting for id:', data.id);
+    };
+
+    const handleTTSComplete = (data: { id: string }) => {
+      console.log('[TTS] Complete for id:', data.id);
+    };
+
     socket.on('tts:chunk', handleTTSChunk);
+    socket.on('tts:start', handleTTSStart);
+    socket.on('tts:complete', handleTTSComplete);
 
     return () => {
       socket.off('tts:chunk', handleTTSChunk);
+      socket.off('tts:start', handleTTSStart);
+      socket.off('tts:complete', handleTTSComplete);
     };
   }, [enqueueAudio]);
 
-  // Join session when component mounts
-  useEffect(() => {
-    if (isConnected && role) {
-      joinSession(sessionId, role);
-    }
-  }, [isConnected, role, sessionId, joinSession]);
+  // Note: Session is already joined from App.tsx, no need to join again here
 
   // Determine language based on role
   const getLanguage = (): Language => {

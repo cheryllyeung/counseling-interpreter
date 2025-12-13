@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Socket } from 'socket.io';
-import { DeepgramService, type TranscriptResult } from '../services/deepgram.service.js';
+import { DeepgramService, DeepgramConnection, type TranscriptResult } from '../services/deepgram.service.js';
 import { TranslationService } from '../services/translation.service.js';
 import { AzureTTSService } from '../services/azure-tts.service.js';
 import { ElevenLabsService } from '../services/elevenlabs.service.js';
@@ -31,7 +31,7 @@ export abstract class AudioPipeline {
   protected targetSocket: TypedSocket | null;
   protected deepgramService: DeepgramService;
   protected translationService: TranslationService;
-  protected deepgramConnection: ReturnType<DeepgramService['createLiveConnection']> | null = null;
+  protected deepgramConnection: DeepgramConnection | null = null;
   protected metrics: PipelineMetrics = { sttLatency: 0, translationLatency: 0, ttsLatency: 0 };
   protected pendingText: string = '';
 
@@ -134,13 +134,11 @@ export abstract class AudioPipeline {
       this.targetSocket?.emit('translation:start', { id });
       this.socket.emit('status:processing', { stage: 'translation', active: true });
 
-      // Translate with streaming
-      let fullTranslation = '';
+      // Translate with streaming - text appears immediately as it's generated
       const translation = await this.translationService.translateStream(
         text,
         this.getTranslationDirection(),
         (chunk) => {
-          fullTranslation += chunk;
           this.socket.emit('translation:chunk', { id, chunk });
           this.targetSocket?.emit('translation:chunk', { id, chunk });
         }
@@ -149,7 +147,7 @@ export abstract class AudioPipeline {
       this.metrics.translationLatency = Date.now() - translationStart;
       this.socket.emit('status:processing', { stage: 'translation', active: false });
 
-      // Emit translation complete
+      // Emit translation complete immediately - don't wait for TTS
       const translationData = {
         id,
         originalText: text,
@@ -160,46 +158,71 @@ export abstract class AudioPipeline {
       this.socket.emit('translation:complete', translationData);
       this.targetSocket?.emit('translation:complete', translationData);
 
-      // TTS
-      const ttsStart = Date.now();
-      this.socket.emit('tts:start', { id });
-      this.targetSocket?.emit('tts:start', { id });
-      this.socket.emit('status:processing', { stage: 'tts', active: true });
+      // TTS runs in background - don't block the pipeline
+      this.processTTSInBackground(id, translation);
 
-      const audioBuffer = await this.synthesizeSpeech(translation);
-      this.metrics.ttsLatency = Date.now() - ttsStart;
-      this.socket.emit('status:processing', { stage: 'tts', active: false });
-
-      // Send audio to target (the person who needs to hear the translation)
-      const audioArrayBuffer = audioBuffer.buffer.slice(
-        audioBuffer.byteOffset,
-        audioBuffer.byteOffset + audioBuffer.byteLength
-      );
-
-      if (this.targetSocket) {
-        this.targetSocket.emit('tts:chunk', { id, chunk: audioArrayBuffer as ArrayBuffer });
-        this.targetSocket.emit('tts:complete', { id });
-      }
-      this.socket.emit('tts:complete', { id });
-
-      // Emit latency metrics
-      const metrics: LatencyMetrics = {
-        stt: this.metrics.sttLatency,
-        translation: this.metrics.translationLatency,
-        tts: this.metrics.ttsLatency,
-        total: this.metrics.sttLatency + this.metrics.translationLatency + this.metrics.ttsLatency,
-      };
-
-      this.socket.emit('status:latency', metrics);
-      logger.info({ metrics, sessionId: this.sessionId }, 'Pipeline metrics');
     } catch (error) {
-      logger.error({ error }, 'Translation/TTS pipeline error');
+      logger.error({ error }, 'Translation pipeline error');
       this.socket.emit('connection:error', {
         code: 'PIPELINE_ERROR',
-        message: 'Translation or TTS error',
+        message: 'Translation error',
         details: error,
       });
     }
+  }
+
+  private processTTSInBackground(id: string, translation: string): void {
+    const ttsStart = Date.now();
+    console.log('🔊 Starting TTS for:', translation.substring(0, 50) + '...');
+    this.socket.emit('tts:start', { id });
+    this.targetSocket?.emit('tts:start', { id });
+    this.socket.emit('status:processing', { stage: 'tts', active: true });
+
+    this.synthesizeSpeech(translation)
+      .then((audioBuffer) => {
+        console.log('✅ TTS completed, audio size:', audioBuffer.length, 'bytes');
+        this.metrics.ttsLatency = Date.now() - ttsStart;
+        this.socket.emit('status:processing', { stage: 'tts', active: false });
+
+        // Send audio to target (the person who needs to hear the translation)
+        const audioArrayBuffer = audioBuffer.buffer.slice(
+          audioBuffer.byteOffset,
+          audioBuffer.byteOffset + audioBuffer.byteLength
+        );
+
+        if (this.targetSocket) {
+          // Send to the other participant
+          this.targetSocket.emit('tts:chunk', { id, chunk: audioArrayBuffer as ArrayBuffer });
+          this.targetSocket.emit('tts:complete', { id });
+        } else {
+          // No other participant - send to self for testing
+          console.log('📢 No target socket, sending audio to self for testing');
+          this.socket.emit('tts:chunk', { id, chunk: audioArrayBuffer as ArrayBuffer });
+        }
+        this.socket.emit('tts:complete', { id });
+
+        // Emit latency metrics
+        const metrics: LatencyMetrics = {
+          stt: this.metrics.sttLatency,
+          translation: this.metrics.translationLatency,
+          tts: this.metrics.ttsLatency,
+          total: this.metrics.sttLatency + this.metrics.translationLatency + this.metrics.ttsLatency,
+        };
+
+        this.socket.emit('status:latency', metrics);
+        logger.info({ metrics, sessionId: this.sessionId }, 'Pipeline metrics');
+      })
+      .catch((error) => {
+        this.socket.emit('status:processing', { stage: 'tts', active: false });
+        console.error('❌ TTS ERROR:', error);
+        logger.error({ error }, 'TTS error (non-blocking)');
+        // Emit error to client so they know TTS failed
+        this.socket.emit('connection:error', {
+          code: 'TTS_ERROR',
+          message: 'TTS synthesis failed',
+          details: String(error),
+        });
+      });
   }
 
   stop(): void {

@@ -28,9 +28,23 @@ export function SessionView({ sessionId }: SessionViewProps) {
     const socket = socketService.getSocket();
     if (!socket) return;
 
-    const handleTTSChunk = (data: { id: string; chunk: ArrayBuffer }) => {
-      console.log('[TTS] Received audio chunk:', data.chunk.byteLength, 'bytes');
-      enqueueAudio(data.chunk);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleTTSChunk = (data: { id: string; chunk: any }) => {
+      console.log('[TTS] Received audio chunk, type:', Object.prototype.toString.call(data.chunk));
+      // Socket.IO sends binary data - ensure we have an ArrayBuffer
+      let audioData: ArrayBuffer;
+      if (data.chunk instanceof ArrayBuffer) {
+        audioData = data.chunk;
+      } else if (data.chunk && data.chunk.buffer) {
+        // Uint8Array or similar typed array
+        const view = data.chunk;
+        audioData = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+      } else {
+        console.error('[TTS] Unknown chunk type:', typeof data.chunk);
+        return;
+      }
+      console.log('[TTS] Enqueuing audio:', audioData.byteLength, 'bytes');
+      enqueueAudio(audioData);
     };
 
     const handleTTSStart = (data: { id: string }) => {

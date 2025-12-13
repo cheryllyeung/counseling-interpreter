@@ -9,11 +9,18 @@ export class ElevenLabsService {
   private voiceId: string;
 
   constructor() {
+    const apiKey = env.ELEVENLABS_API_KEY;
+    // Log masked API key for debugging (show first 8 and last 4 chars)
+    const maskedKey = apiKey.length > 12
+      ? `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`
+      : '***';
+    logger.info({ maskedKey, keyLength: apiKey.length }, 'ElevenLabs API key loaded');
+
     this.client = new ElevenLabsClient({
-      apiKey: env.ELEVENLABS_API_KEY,
+      apiKey: apiKey,
     });
     this.voiceId = env.ELEVENLABS_VOICE_ID;
-    logger.info('ElevenLabs service initialized');
+    logger.info({ voiceId: this.voiceId }, 'ElevenLabs service initialized');
   }
 
   async synthesize(text: string): Promise<Buffer> {

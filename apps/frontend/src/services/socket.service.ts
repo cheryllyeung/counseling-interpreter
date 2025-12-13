@@ -8,7 +8,7 @@ type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 // In production, connect to the same origin; in dev, use localhost:3001
 const WS_URL = import.meta.env.VITE_WS_URL || (
-  import.meta.env.PROD ? window.location.origin : 'http://localhost:3001'
+  import.meta.env.MODE === 'production' ? window.location.origin : 'http://localhost:3001'
 );
 
 class SocketService {

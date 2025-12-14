@@ -44,10 +44,12 @@ export function registerAudioHandler(_io: TypedServer, socket: TypedSocket) {
 
     logger.info({ sessionId, role, language: data.language }, 'Audio stream starting');
 
-    // Get target socket (the other participant)
-    const participants = sessionParticipants.get(sessionId);
+    // Create a getter function to dynamically get target socket
     const targetRole = role === 'student' ? 'counselor' : 'student';
-    const targetSocket = participants?.get(targetRole) || null;
+    const getTargetSocket = () => {
+      const participants = sessionParticipants.get(sessionId);
+      return participants?.get(targetRole) || null;
+    };
 
     // Create appropriate pipeline based on language
     let pipeline: AudioPipeline;
@@ -57,7 +59,7 @@ export function registerAudioHandler(_io: TypedServer, socket: TypedSocket) {
       pipeline = new EnglishToChinese(
         sessionId,
         socket,
-        targetSocket,
+        getTargetSocket,
         deepgramService,
         translationService,
         azureTTSService
@@ -67,7 +69,7 @@ export function registerAudioHandler(_io: TypedServer, socket: TypedSocket) {
       pipeline = new ChineseToEnglish(
         sessionId,
         socket,
-        targetSocket,
+        getTargetSocket,
         deepgramService,
         translationService,
         elevenLabsService

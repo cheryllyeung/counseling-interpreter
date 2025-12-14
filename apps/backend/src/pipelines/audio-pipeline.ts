@@ -28,7 +28,7 @@ interface PipelineMetrics {
 export abstract class AudioPipeline {
   protected sessionId: string;
   protected socket: TypedSocket;
-  protected targetSocket: TypedSocket | null;
+  protected getTargetSocket: () => TypedSocket | null;
   protected deepgramService: DeepgramService;
   protected translationService: TranslationService;
   protected deepgramConnection: DeepgramConnection | null = null;
@@ -38,13 +38,13 @@ export abstract class AudioPipeline {
   constructor(
     sessionId: string,
     socket: TypedSocket,
-    targetSocket: TypedSocket | null,
+    getTargetSocket: () => TypedSocket | null,
     deepgramService: DeepgramService,
     translationService: TranslationService
   ) {
     this.sessionId = sessionId;
     this.socket = socket;
-    this.targetSocket = targetSocket;
+    this.getTargetSocket = getTargetSocket;
     this.deepgramService = deepgramService;
     this.translationService = translationService;
   }
@@ -110,8 +110,9 @@ export abstract class AudioPipeline {
     });
 
     // Also emit to target socket if available
-    if (this.targetSocket) {
-      this.targetSocket.emit('transcript:final', {
+    const targetSocket = this.getTargetSocket();
+    if (targetSocket) {
+      targetSocket.emit('transcript:final', {
         id: transcriptId,
         text: result.text,
         speaker: this.socket.data.role!,
@@ -130,8 +131,9 @@ export abstract class AudioPipeline {
 
     try {
       // Emit translation start
+      const targetSocket = this.getTargetSocket();
       this.socket.emit('translation:start', { id });
-      this.targetSocket?.emit('translation:start', { id });
+      targetSocket?.emit('translation:start', { id });
       this.socket.emit('status:processing', { stage: 'translation', active: true });
 
       // Translate with streaming - text appears immediately as it's generated
@@ -140,7 +142,7 @@ export abstract class AudioPipeline {
         this.getTranslationDirection(),
         (chunk) => {
           this.socket.emit('translation:chunk', { id, chunk });
-          this.targetSocket?.emit('translation:chunk', { id, chunk });
+          targetSocket?.emit('translation:chunk', { id, chunk });
         }
       );
 
@@ -156,7 +158,7 @@ export abstract class AudioPipeline {
         timestamp: Date.now(),
       };
       this.socket.emit('translation:complete', translationData);
-      this.targetSocket?.emit('translation:complete', translationData);
+      targetSocket?.emit('translation:complete', translationData);
 
       // TTS runs in background - don't block the pipeline
       this.processTTSInBackground(id, translation);
@@ -173,9 +175,11 @@ export abstract class AudioPipeline {
 
   private processTTSInBackground(id: string, translation: string): void {
     const ttsStart = Date.now();
+    const targetSocket = this.getTargetSocket();
     console.log('🔊 Starting TTS for:', translation.substring(0, 50) + '...');
+    console.log('🎯 Target socket exists:', !!targetSocket, targetSocket?.id || 'none');
     this.socket.emit('tts:start', { id });
-    this.targetSocket?.emit('tts:start', { id });
+    targetSocket?.emit('tts:start', { id });
     this.socket.emit('status:processing', { stage: 'tts', active: true });
 
     this.synthesizeSpeech(translation)
@@ -190,10 +194,15 @@ export abstract class AudioPipeline {
           audioBuffer.byteOffset + audioBuffer.byteLength
         );
 
-        if (this.targetSocket) {
+        // Re-fetch target socket in case it changed during TTS generation
+        const currentTargetSocket = this.getTargetSocket();
+        console.log('📤 Sending TTS audio to target socket:', !!currentTargetSocket, currentTargetSocket?.id || 'none');
+
+        if (currentTargetSocket) {
           // Send to the other participant
-          this.targetSocket.emit('tts:chunk', { id, chunk: audioArrayBuffer as ArrayBuffer });
-          this.targetSocket.emit('tts:complete', { id });
+          currentTargetSocket.emit('tts:chunk', { id, chunk: audioArrayBuffer as ArrayBuffer });
+          currentTargetSocket.emit('tts:complete', { id });
+          console.log('✅ Audio sent to target socket');
         } else {
           // No other participant - send to self for testing
           console.log('📢 No target socket, sending audio to self for testing');
@@ -242,12 +251,12 @@ export class EnglishToChinese extends AudioPipeline {
   constructor(
     sessionId: string,
     socket: TypedSocket,
-    targetSocket: TypedSocket | null,
+    getTargetSocket: () => TypedSocket | null,
     deepgramService: DeepgramService,
     translationService: TranslationService,
     azureTTS: AzureTTSService
   ) {
-    super(sessionId, socket, targetSocket, deepgramService, translationService);
+    super(sessionId, socket, getTargetSocket, deepgramService, translationService);
     this.azureTTS = azureTTS;
   }
 
@@ -274,12 +283,12 @@ export class ChineseToEnglish extends AudioPipeline {
   constructor(
     sessionId: string,
     socket: TypedSocket,
-    targetSocket: TypedSocket | null,
+    getTargetSocket: () => TypedSocket | null,
     deepgramService: DeepgramService,
     translationService: TranslationService,
     elevenLabsTTS: ElevenLabsService
   ) {
-    super(sessionId, socket, targetSocket, deepgramService, translationService);
+    super(sessionId, socket, getTargetSocket, deepgramService, translationService);
     this.elevenLabsTTS = elevenLabsTTS;
   }
 

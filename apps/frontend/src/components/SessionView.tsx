@@ -29,20 +29,32 @@ export function SessionView({ sessionId }: SessionViewProps) {
     if (!socket) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleTTSChunk = (data: { id: string; chunk: any }) => {
+    const handleTTSChunk = async (data: { id: string; chunk: any }) => {
       console.log('[TTS] Received audio chunk, type:', Object.prototype.toString.call(data.chunk));
-      // Socket.IO sends binary data - ensure we have an ArrayBuffer
+
+      // Socket.IO sends binary data - handle various formats
       let audioData: ArrayBuffer;
+
       if (data.chunk instanceof ArrayBuffer) {
         audioData = data.chunk;
-      } else if (data.chunk && data.chunk.buffer) {
+      } else if (data.chunk instanceof Blob) {
+        // Socket.IO may send as Blob in some browsers
+        audioData = await data.chunk.arrayBuffer();
+      } else if (data.chunk && data.chunk.buffer instanceof ArrayBuffer) {
         // Uint8Array or similar typed array
         const view = data.chunk;
         audioData = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+      } else if (data.chunk && typeof data.chunk === 'object' && data.chunk.type === 'Buffer' && Array.isArray(data.chunk.data)) {
+        // Node.js Buffer serialized to JSON: { type: 'Buffer', data: [72, 101, ...] }
+        audioData = new Uint8Array(data.chunk.data).buffer;
+      } else if (Array.isArray(data.chunk)) {
+        // Plain array of bytes
+        audioData = new Uint8Array(data.chunk).buffer;
       } else {
-        console.error('[TTS] Unknown chunk type:', typeof data.chunk);
+        console.error('[TTS] Unknown chunk type:', typeof data.chunk, data.chunk);
         return;
       }
+
       console.log('[TTS] Enqueuing audio:', audioData.byteLength, 'bytes');
       enqueueAudio(audioData);
     };

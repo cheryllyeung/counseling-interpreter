@@ -144,3 +144,14 @@ export function registerParticipant(sessionId: string, role: string, socket: Typ
 export function getSessionParticipants(sessionId: string) {
   return sessionParticipants.get(sessionId);
 }
+
+// Helper to unregister participant from session
+export function unregisterParticipant(sessionId: string, role: string) {
+  const participants = sessionParticipants.get(sessionId);
+  if (participants) {
+    participants.delete(role);
+    if (participants.size === 0) {
+      sessionParticipants.delete(sessionId);
+    }
+  }
+}

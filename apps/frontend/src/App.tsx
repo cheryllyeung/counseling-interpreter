@@ -11,7 +11,7 @@ function App() {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [isJoining, setIsJoining] = useState(false);
 
-  const { joinSession } = useSocket();
+  const { joinSession, leaveSession } = useSocket();
   const { isConnected, role, setSession, reset } = useSessionStore();
 
   // Generate a random session ID
@@ -34,11 +34,12 @@ function App() {
   }, [sessionId, selectedRole, setSession, joinSession]);
 
   const handleLeaveSession = useCallback(() => {
+    leaveSession(); // Notify server before resetting state
     reset();
     setIsJoining(false);
     setSelectedRole(null);
     generateSessionId();
-  }, [reset, generateSessionId]);
+  }, [leaveSession, reset, generateSessionId]);
 
   // Show session view if user has joined
   if (role && isJoining) {

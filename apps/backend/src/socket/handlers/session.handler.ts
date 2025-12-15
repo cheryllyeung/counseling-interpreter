@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { registerParticipant, getSessionParticipants } from './audio.handler.js';
+import { registerParticipant, getSessionParticipants, unregisterParticipant } from './audio.handler.js';
 import { createLogger } from '../../utils/logger.js';
 import type {
   Role,
@@ -65,6 +65,9 @@ export function registerSessionHandler(_io: TypedServer, socket: TypedSocket) {
 
     if (sessionId && role) {
       socket.leave(sessionId);
+
+      // Remove from session participants tracking
+      unregisterParticipant(sessionId, role);
 
       // Notify other participants
       socket.to(sessionId).emit('session:participant-left', {

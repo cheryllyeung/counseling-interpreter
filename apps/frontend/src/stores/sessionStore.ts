@@ -137,5 +137,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   setLatencyMetrics: (latencyMetrics) => set({ latencyMetrics }),
 
-  reset: () => set(initialState),
+  reset: () => set((state) => ({
+    ...initialState,
+    // Preserve connection state as socket connection is managed separately
+    isConnected: state.isConnected,
+    socketId: state.socketId,
+  })),
 }));
